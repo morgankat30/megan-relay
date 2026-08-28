@@ -1,3 +1,14 @@
+// Cloudflare Worker port of ai-relay.js — same request/response contract,
+// so nothing on the client side (megan-brain.js) needs to change except
+// which URL it points at. AI_ENDPOINT / AI_MODEL are plain Worker
+// variables (set in wrangler.toml). AI_API_KEY is a Secrets Store
+// binding — NOT a plain string like the others: Cloudflare's Secrets
+// Store exposes it as an object with an async .get() method, confirmed
+// directly from Cloudflare's own docs. Reading it as if it were already
+// a string (env.AI_API_KEY used directly) silently sent the literal text
+// "Bearer [object Object]" to NVIDIA instead of the real key — which is
+// exactly what a 401 Unauthorized with no other error detail looks like.
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -14,10 +25,19 @@ export default {
     }
 
     const endpoint = env.AI_ENDPOINT;
-    const apiKey = env.AI_API_KEY;
     const model = env.AI_MODEL;
-    if (!endpoint || !apiKey || !model) {
+    if (!endpoint || !model || !env.AI_API_KEY) {
       return new Response(JSON.stringify({ error: 'AI_ENDPOINT, AI_API_KEY, or AI_MODEL not configured on this Worker' }), { status: 500, headers: CORS });
+    }
+
+    let apiKey;
+    try {
+      apiKey = await env.AI_API_KEY.get();
+    } catch (err) {
+      return new Response(JSON.stringify({ error: 'failed to read AI_API_KEY from Secrets Store: ' + err.message }), { status: 500, headers: CORS });
+    }
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'AI_API_KEY resolved empty' }), { status: 500, headers: CORS });
     }
 
     let systemPrompt, userPrompt, history;
