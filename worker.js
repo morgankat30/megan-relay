@@ -1,13 +1,8 @@
-// Cloudflare Worker port of ai-relay.js — same request/response contract,
-// so nothing on the client side (megan-brain.js) needs to change except
-// which URL it points at. AI_ENDPOINT / AI_MODEL are plain Worker
-// variables (set in wrangler.toml). AI_API_KEY is a Secrets Store
-// binding — NOT a plain string like the others: Cloudflare's Secrets
-// Store exposes it as an object with an async .get() method, confirmed
-// directly from Cloudflare's own docs. Reading it as if it were already
-// a string (env.AI_API_KEY used directly) silently sent the literal text
-// "Bearer [object Object]" to NVIDIA instead of the real key — which is
-// exactly what a 401 Unauthorized with no other error detail looks like.
+// Cloudflare Worker AI relay for Megan — v2, adds vision/image support.
+// AI_ENDPOINT / AI_MODEL are plain vars (wrangler.toml). AI_API_KEY is a
+// Secrets Store binding — needs .get(), confirmed from Cloudflare's docs
+// (a plain string read here silently sent "Bearer [object Object]" to
+// NVIDIA, which is exactly what a bare 401 with no detail looks like).
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -40,12 +35,13 @@ export default {
       return new Response(JSON.stringify({ error: 'AI_API_KEY resolved empty' }), { status: 500, headers: CORS });
     }
 
-    let systemPrompt, userPrompt, history;
+    let systemPrompt, userPrompt, history, attachments;
     try {
       const body = await request.json();
       systemPrompt = body.systemPrompt;
       userPrompt = body.userPrompt;
       history = body.history;
+      attachments = body.attachments;
     } catch {
       return new Response(JSON.stringify({ error: 'invalid request body' }), { status: 400, headers: CORS });
     }
@@ -62,7 +58,17 @@ export default {
           }
         }
       }
-      messages.push({ role: 'user', content: userPrompt });
+
+      const imgs = Array.isArray(attachments) ? attachments.filter(a => typeof a === 'string' && a.startsWith('data:image')) : [];
+      if (imgs.length) {
+        const content = [{ type: 'text', text: userPrompt }];
+        for (const url of imgs.slice(0, 4)) {
+          content.push({ type: 'image_url', image_url: { url } });
+        }
+        messages.push({ role: 'user', content });
+      } else {
+        messages.push({ role: 'user', content: userPrompt });
+      }
 
       const res = await fetch(endpoint.replace(/\/$/, '') + '/chat/completions', {
         method: 'POST',
