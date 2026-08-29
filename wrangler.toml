@@ -10,3 +10,8 @@ AI_MODEL = "meta/llama-3.2-11b-vision-instruct"
 binding = "AI_API_KEY"
 store_id = "b405dcaf41e84fe59a7637ff0be11621"
 secret_name = "nvidia-api-key"
+
+[[secrets_store_secrets]]
+binding = "TAVILY_API_KEY"
+store_id = "b405dcaf41e84fe59a7637ff0be11621"
+secret_name = "tavily-api-key"
