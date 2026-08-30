@@ -4,8 +4,10 @@
 // NVIDIA chat completion relay from before. AI_API_KEY (NVIDIA) is a
 // Secrets Store binding needing .get() — confirmed from Cloudflare's docs,
 // a plain-string read here silently sends "Bearer [object Object]".
-// TAVILY_API_KEY is a plain Worker Secret (classic type) since Tavily's
-// own key format doesn't need Secrets Store's extra layer.
+// TAVILY_API_KEY is ALSO a Secrets Store binding (Cloudflare no longer
+// offers plain classic Secrets in this UI) — needs the same .get() as
+// AI_API_KEY above, confirmed by this exact route failing with
+// "Unauthorized: missing or invalid API key" until this was added.
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,6 +68,10 @@ async function handleResearch(request, env) {
   if (!env.TAVILY_API_KEY) {
     return new Response(JSON.stringify({ error: 'TAVILY_API_KEY not configured on this Worker' }), { status: 500, headers: CORS });
   }
+  let tavilyKey;
+  try { tavilyKey = await env.TAVILY_API_KEY.get(); }
+  catch (err) { return new Response(JSON.stringify({ error: 'failed to read TAVILY_API_KEY from Secrets Store: ' + err.message }), { status: 500, headers: CORS }); }
+  if (!tavilyKey) return new Response(JSON.stringify({ error: 'TAVILY_API_KEY resolved empty' }), { status: 500, headers: CORS });
   let query, domains, recencyDays, maxSources;
   try {
     const body = await request.json();
@@ -92,7 +98,7 @@ async function handleResearch(request, env) {
   try {
     const res = await fetch('https://api.tavily.com/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + env.TAVILY_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tavilyKey },
       body: JSON.stringify(tavilyBody),
     });
     const raw = await res.json();
