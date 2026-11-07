@@ -4,7 +4,7 @@ compatibility_date = "2025-01-01"
 
 [vars]
 AI_ENDPOINT = "https://integrate.api.nvidia.com/v1"
-AI_MODEL = "meta/llama-3.2-11b-vision-instruct"
+AI_MODEL = "meta/llama-3.3-70b-instruct"
 
 [[secrets_store_secrets]]
 binding = "AI_API_KEY"
